@@ -27,6 +27,8 @@ namespace OpenTelemetry.Internal
     internal class CircularBuffer<T>
         where T : class
     {
+        private readonly bool shouldYieldWhileSpinning;
+
         private readonly T[] trait;
         private long head;
         private long tail;
@@ -44,6 +46,8 @@ namespace OpenTelemetry.Internal
 
             this.Capacity = capacity;
             this.trait = new T[capacity];
+
+            this.shouldYieldWhileSpinning = ShouldYieldWhileSpinning();
         }
 
         /// <summary>
@@ -101,7 +105,11 @@ namespace OpenTelemetry.Internal
                 var head = Interlocked.CompareExchange(ref this.head, headSnapshot + 1, headSnapshot);
                 if (head != headSnapshot)
                 {
-                    Thread.Yield();
+                    if (this.shouldYieldWhileSpinning)
+                    {
+                        Thread.Yield();
+                    }
+
                     continue;
                 }
 
@@ -152,7 +160,11 @@ namespace OpenTelemetry.Internal
                         return false; // exceeded maximum spin count
                     }
 
-                    Thread.Yield();
+                    if (this.shouldYieldWhileSpinning)
+                    {
+                        Thread.Yield();
+                    }
+
                     continue;
                 }
 
@@ -187,6 +199,12 @@ namespace OpenTelemetry.Internal
                 this.tail++;
                 return value;
             }
+        }
+
+        private static bool ShouldYieldWhileSpinning()
+        {
+            var isRunningOnSingleCore = Environment.ProcessorCount == 1;
+            return isRunningOnSingleCore;
         }
     }
 }
